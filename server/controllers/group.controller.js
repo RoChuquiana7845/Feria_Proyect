@@ -57,7 +57,12 @@ export const formNewGroup = async (req, res) => {
 
 export const createGroup = async (req, res) => { 
     try { 
-        const group = req.body;
+        req.body.userId = req.user.id;
+        if (req.file) { 
+            req.body.imagen = req.file.filename;
+        }
+        req.body.id = uuid();
+
         const newGroup = await new Group(group);
         req.flash('success', 'The group was created successfully');
         req.redirect('/administration');
@@ -67,16 +72,53 @@ export const createGroup = async (req, res) => {
     }
 }
 
-export const EditGroup = async (req, res) => {
+const formEditGroup = async (req, res) => { 
     const query = [];
+    query.push( Group.findById(req.params.groupId));
+    query.push( Category.find());
+
+    const [group, category] = await Promise.all(query);
+    res.render('edit-group', {
+        namePage: `Edited Group: ${group.name}`,
+        group,
+        category
+    })
+}
+
+export const EditGroup = async (req, res, next) => { 
     const group = await Group.findOne({_id: req.params.groupId});
+    if(!group) { 
+        req.flash('error', "Invalid Operation");
+        req.redirect('/administration');
+        return next();
+    }
+    const { name, description, categoryId, url} = req.body;
+    group.name = name;
+    group.description = description;
+    group.category = categoryId;
+    group.url = url;
+
+    await group.save();
+    req.flash('success', "Changes saved successfully");
+    res.redirect('/administration');
+}
+
+export const formEditImagen = async (req, res) => { 
+    const group = await Group.findOne({_id: req.params.groupId, user: req.user.id});
+    res.render('imagen-group', { 
+        namePage: `Edit Imagen Group: ${group.name}`
+    })
+}
+
+export const EditImagen = async (req, res) => {
+    const query = [];
+    const group = await Group.findOne({_id: req.params.groupId, user: req.user.id});
     if (!group) { 
         req.flash('error', 'Invalid Operation');
         res.redirect('/log-in');
         return next();
     }
-
-    if(req.file && group.imagen)  {
+    if(req.file && group.imagen) {
         const imagenPreviousPath ='';
         fs.unlinkSync(imagenPreviousPath, (error)=> { 
             if (error) { 
@@ -93,4 +135,33 @@ export const EditGroup = async (req, res) => {
     req.flash('success', 'Changes saved successfully');
     res.redirect('administration');
 
+}
+
+export const formDeleteGroup = async (req, res, next) => { 
+    const group = await Group.findOne({_id: req.params.groupId, user: req.user.id});
+    if (!group) { 
+        req.flash('error', 'Invalid operation');
+        req.redirect('/administration');
+        return next();
+    }
+    res.render('delete-group', { 
+        namePage: `Deleted Group: ${group.name}`
+    })
+}
+
+export const DeleteGroup = async (req, res, next) => { 
+    const group = await Group.findOne({_id: req.params.groupId, user: req.user.id});
+    if(group.imagen) { 
+        const imagenPreviousPath = '';
+        fs.unlink(imagenPreviousPath, (error) => { 
+            if(error) { 
+                console.error(error);
+            }
+            return; 
+        });
+    }
+
+    await Group.deleteOne({_id: req.params.groupId});
+    req.flash("success", "The group has been deleted");
+    res.redirect("/administration")
 }
